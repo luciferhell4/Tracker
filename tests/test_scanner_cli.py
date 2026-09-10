@@ -178,3 +178,38 @@ def test_report_rendering():
     assert markdown.startswith("| Score |")
     assert "12.50" in markdown
     assert report.render([]) .startswith("No clustered mints")
+
+
+def test_add_command_from_arguments(tmp_path, monkeypatch, capsys):
+    cfg = make_config(tmp_path)
+    monkeypatch.setattr(cli.Config, "load", classmethod(lambda cls, path=None: cfg))
+    assert cli.main(["add", A, B, "--chain", "base", "--tag", "Inks"]) == 0
+    assert "Added 2 wallets" in capsys.readouterr().out
+    with Store(cfg.store_path) as store:
+        wallets = store.wallets("base")
+        assert {w.address for w in wallets} == {A, B}
+        assert all(w.tag == "Inks" for w in wallets)
+
+
+def test_add_command_from_stdin(tmp_path, monkeypatch, capsys):
+    import io
+
+    cfg = make_config(tmp_path)
+    monkeypatch.setattr(cli.Config, "load", classmethod(lambda cls, path=None: cfg))
+    pasted = f"1\t{A}\thttps://basescan.org/address/{A}\t$50,000\n"
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO(pasted))
+    assert cli.main(["add"]) == 0
+    with Store(cfg.store_path) as store:
+        wallet = store.wallets("base")[0]
+        assert wallet.rank == 1
+        assert wallet.pnl_usd == 50_000
+
+
+def test_add_command_rejects_input_without_addresses(tmp_path, monkeypatch, capsys):
+    import io
+
+    cfg = make_config(tmp_path)
+    monkeypatch.setattr(cli.Config, "load", classmethod(lambda cls, path=None: cfg))
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("nothing useful here\n"))
+    assert cli.main(["add"]) == 1
+    assert "No addresses found" in capsys.readouterr().out

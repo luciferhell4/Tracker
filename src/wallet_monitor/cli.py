@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import chains, notify, notion_sync, report
+from . import chains, notify, notion_sync, paste, report
 from .config import Config
 from .providers.registry import build_providers, missing_credentials, provider_for
 from .scanner import scan, wallet_index
@@ -49,6 +49,33 @@ def cmd_import_csv(cfg: Config, args: argparse.Namespace) -> int:
     with _store(cfg) as store:
         store.upsert_wallets(wallets)
     print(f"Imported {len(wallets)} wallets from {path}")
+    return 0
+
+
+def cmd_add(cfg: Config, args: argparse.Namespace) -> int:
+    """Add wallets from arguments, or from text pasted on stdin."""
+    if args.addresses:
+        text = "\n".join(args.addresses)
+    elif not sys.stdin.isatty():
+        text = sys.stdin.read()
+    else:
+        print("Pass addresses as arguments, or pipe a pasted Notion column on stdin.")
+        return 1
+
+    wallets = notion_sync.dedupe(
+        paste.parse(text, source=args.source, tag=args.tag, chain=args.chain)
+    )
+    if not wallets:
+        print("No addresses found in that input.")
+        return 1
+    with _store(cfg) as store:
+        store.upsert_wallets(wallets)
+    by_chain: dict[str, int] = {}
+    for w in wallets:
+        by_chain[w.chain] = by_chain.get(w.chain, 0) + 1
+    print(f"Added {len(wallets)} wallets:")
+    for chain, count in sorted(by_chain.items(), key=lambda kv: -kv[1]):
+        print(f"  {chain:<10} {count}")
     return 0
 
 
@@ -170,6 +197,13 @@ def build_parser() -> argparse.ArgumentParser:
     imp = sub.add_parser("import-csv", help="import wallets from a CSV file")
     imp.add_argument("path", nargs="?", help="defaults to the configured wallets csv")
     imp.set_defaults(func=cmd_import_csv)
+
+    add = sub.add_parser("add", help="add wallets from arguments or pasted text on stdin")
+    add.add_argument("addresses", nargs="*", help="addresses, or nothing to read stdin")
+    add.add_argument("--chain", help="force a chain instead of inferring one")
+    add.add_argument("--tag", default="", help="label these wallets, e.g. 'HYPE TERMINAL'")
+    add.add_argument("--source", default="pasted")
+    add.set_defaults(func=cmd_add)
 
     wallets = sub.add_parser("wallets", help="list the wallets being watched")
     wallets.add_argument("--chain")

@@ -1,0 +1,74 @@
+name: Scan wallets
+
+# Runs the monitor without leaving anything running locally. GitHub's scheduler
+# is best-effort and often late, so treat the interval as a floor, not a promise.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      lookback_hours:
+        description: How far back this pass should look
+        required: false
+        default: "6"
+      min_wallets:
+        description: Distinct tracked wallets needed for a signal
+        required: false
+        default: "2"
+
+concurrency:
+  group: wallet-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+      ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+      HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TRACKER_LOOKBACK_HOURS: ${{ inputs.lookback_hours || '6' }}
+      TRACKER_MIN_WALLETS: ${{ inputs.min_wallets || '2' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -e .
+
+      # Carries the mint history and per-wallet cursors between runs, so each
+      # pass is incremental and a contract only alerts once.
+      - name: Restore tracker state
+        uses: actions/cache@v4
+        with:
+          path: data/tracker.sqlite
+          key: tracker-state-${{ github.run_id }}
+          restore-keys: tracker-state-
+
+      - name: Load the watchlist
+        run: |
+          if [ -n "$NOTION_TOKEN" ]; then
+            wallet-monitor sync
+          elif [ -f data/watchlist.csv ]; then
+            wallet-monitor import-csv data/watchlist.csv
+          else
+            echo "::error::No watchlist. Set the NOTION_TOKEN secret, or commit data/watchlist.csv."
+            exit 1
+          fi
+
+      - run: wallet-monitor doctor
+
+      - name: Scan
+        run: wallet-monitor scan
+
+      - name: Current top signals
+        if: always()
+        run: wallet-monitor top --hours 48 --markdown >> "$GITHUB_STEP_SUMMARY"

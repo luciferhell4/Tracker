@@ -5,6 +5,7 @@ venv/
 .env
 data/*.sqlite
 data/*.sqlite-*
+# written by `sync`; commit data/watchlist.csv when you want CI to use a fixed list
 data/wallets.csv
 .pytest_cache/
 *.egg-info/

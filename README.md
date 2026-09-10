@@ -54,17 +54,30 @@ Each database has to be shared with your integration first (open it in Notion �
 `...` → Connections → add your integration). If a table is not shared, `sync`
 reports that one as failed and still imports the rest.
 
-If you would rather not wire up an integration, export each Notion table to CSV
-and import it instead. Only an `address` column is required; `chain`, `rank`,
+### Without an integration
+
+Two other ways in, either of which gets you running in under a minute.
+
+**Paste the table.** Select the rows in Notion, copy, and pipe them in. Explorer
+links, ranks and dollar amounts on the line are all read, so a copied table keeps
+its wallet quality data:
+
+```bash
+pbpaste | wallet-monitor add --tag "Project Mars Land"
+wallet-monitor add 0xabc... 0xdef... --chain base --tag Inks
+```
+
+**Export to CSV.** Only an `address` column is required. `chain`, `rank`,
 `pnl_usd`, `tag` and `url` are used when present, and the chain is inferred from
-the explorer link or the address shape when the column is missing.
+the explorer link or the address shape when the column is missing:
 
 ```bash
 wallet-monitor import-csv path/to/export.csv
 wallet-monitor wallets
 ```
 
-`data/wallets.example.csv` shows the shape.
+`data/wallets.example.csv` shows the shape. Imports merge rather than replace, so
+you can mix all three sources; the richest record for each address wins.
 
 ## Running
 
@@ -77,6 +90,20 @@ wallet-monitor top --markdown        # table for pasting into Notion or Discord
 
 Limit a pass to one chain with `--chain base --chain abstract`. Re-alert on
 contracts you have already been told about with `--no-dedupe`.
+
+### On a schedule, without your machine
+
+`.github/workflows/scan.yml` runs a pass every 15 minutes and posts to Discord.
+Add whichever of these you use as repository secrets: `NOTION_TOKEN`,
+`ALCHEMY_API_KEY`, `ETHERSCAN_API_KEY`, `HELIUS_API_KEY`, `DISCORD_WEBHOOK_URL`,
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+
+Without `NOTION_TOKEN` the workflow reads `data/watchlist.csv`, so commit that
+file if you built your list by pasting. The mint history and per-wallet cursors
+ride between runs in the Actions cache, which keeps each pass incremental and
+stops a contract alerting twice. Every run also writes the current top signals
+to its job summary. GitHub's scheduler is best-effort and frequently runs late,
+so treat 15 minutes as a floor.
 
 ## How the score works
 
@@ -127,6 +154,7 @@ src/wallet_monitor/
   chains.py       chain registry, explorer links, address parsing
   config.py       config.toml + environment
   notion_sync.py  Notion import, CSV import/export
+  paste.py        address extraction from pasted table rows
   providers/      alchemy, etherscan, helius, and the picker between them
   scanner.py      one incremental pass over every wallet
   scoring.py      clustering and the score
