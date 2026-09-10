@@ -51,6 +51,11 @@ CREATE TABLE IF NOT EXISTS cursors (
     PRIMARY KEY (chain, wallet)
 );
 
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS alerted (
     chain        TEXT NOT NULL,
     contract     TEXT NOT NULL,
@@ -126,6 +131,13 @@ class Store:
             )
             for r in self.conn.execute(sql, args)
         ]
+
+    def delete_wallet(self, chain: str, address: str) -> bool:
+        cur = self.conn.execute(
+            "DELETE FROM wallets WHERE chain = ? AND address = ?", (chain, address)
+        )
+        self.conn.commit()
+        return bool(cur.rowcount)
 
     def wallet_chains(self) -> list[str]:
         return [r[0] for r in self.conn.execute("SELECT DISTINCT chain FROM wallets ORDER BY chain")]
@@ -217,6 +229,32 @@ class Store:
             (chain, contract, wallet_count, int(time.time())),
         )
         self.conn.commit()
+
+    # ------------------------------------------------------------------- meta
+
+    def set_meta(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        self.conn.commit()
+
+    def get_meta(self, key: str, default: str = "") -> str:
+        row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def mints_per_hour(self, since_ts: int) -> list[tuple[int, int]]:
+        """(hour-bucket unix ts, mint count), oldest first."""
+        rows = self.conn.execute(
+            """
+            SELECT (timestamp / 3600) * 3600 AS bucket, COUNT(*)
+            FROM mints WHERE timestamp >= ?
+            GROUP BY bucket ORDER BY bucket
+            """,
+            (since_ts,),
+        )
+        return [(int(r[0]), int(r[1])) for r in rows]
 
     def stats(self) -> dict[str, int]:
         def one(sql: str) -> int:

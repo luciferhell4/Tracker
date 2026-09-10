@@ -15,6 +15,9 @@ wallet-monitor = "wallet_monitor.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+wallet_monitor = ["web_assets/*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

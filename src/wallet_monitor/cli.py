@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import chains, notify, notion_sync, paste, report
+from . import chains, notify, notion_sync, paste, report, web
 from .config import Config
 from .providers.registry import build_providers, missing_credentials, provider_for
 from .scanner import scan, wallet_index
@@ -155,6 +155,25 @@ def cmd_top(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(cfg: Config, args: argparse.Namespace) -> int:
+    """Run the dashboard on localhost."""
+    httpd = web.serve(cfg, args.host, args.port)
+    url = f"http://{args.host}:{args.port}/"
+    print(f"Wallet Monitor is at {url}  (Ctrl-C to stop)")
+    if args.open:
+        import webbrowser
+
+        webbrowser.open(url)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    return 0
+
+
 def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     print(f"config store       : {cfg.store_path}")
     print(f"wallet csv         : {cfg.wallets_csv}")
@@ -224,6 +243,12 @@ def build_parser() -> argparse.ArgumentParser:
     top.add_argument("--hours", type=int, default=48)
     top.add_argument("--markdown", action="store_true")
     top.set_defaults(func=cmd_top)
+
+    serve_cmd = sub.add_parser("serve", help="run the dashboard in a browser")
+    serve_cmd.add_argument("--host", default="127.0.0.1")
+    serve_cmd.add_argument("--port", type=int, default=8787)
+    serve_cmd.add_argument("--open", action="store_true", help="open a browser window")
+    serve_cmd.set_defaults(func=cmd_serve)
 
     doctor = sub.add_parser("doctor", help="show configuration and credential status")
     doctor.set_defaults(func=cmd_doctor)

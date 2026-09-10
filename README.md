@@ -79,7 +79,23 @@ wallet-monitor wallets
 `data/wallets.example.csv` shows the shape. Imports merge rather than replace, so
 you can mix all three sources; the richest record for each address wins.
 
-## Running
+## The dashboard
+
+```bash
+wallet-monitor serve --open      # http://127.0.0.1:8787
+```
+
+A local web app with the same engine behind it: ranked signals with the wallets
+that triggered each one, a mint-activity chart and feed, a watchlist you can
+paste into, and a setup tab that tells you which credentials are missing and
+which provider each of your chains will use. Scans run in the background from
+the button in the header, and the page refreshes itself every 30 seconds.
+
+It binds to localhost only. That is deliberate, since it runs with your API keys
+in its environment. A hosted page could not do this job at all: browsers cannot
+reach Alchemy, Etherscan or Helius from a page you did not serve yourself.
+
+## Running from the command line
 
 ```bash
 wallet-monitor scan                  # one pass, alerts on anything new
@@ -161,6 +177,8 @@ src/wallet_monitor/
   store.py        sqlite: wallets, mints, cursors, alert history
   report.py       text and markdown output
   notify.py       stdout, Discord, Telegram
+  web.py          local HTTP server and JSON API
+  web_assets/     the dashboard: one HTML page, one stylesheet, one script
   cli.py          commands
 ```
 

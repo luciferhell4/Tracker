@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wallet Monitor</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🛰️</text></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>Wallet Monitor</h1>
+        <p class="brand-sub" id="store-path">loading…</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <label class="toggle">
+        <input type="checkbox" id="auto-refresh" checked>
+        <span>Auto refresh</span>
+      </label>
+      <button class="btn btn-primary" id="scan-btn">Run scan</button>
+    </div>
+  </header>
+
+  <p class="scan-status" id="scan-status" hidden></p>
+
+  <section class="kpi-row" aria-label="Summary">
+    <article class="tile">
+      <p class="tile-label">Live signals</p>
+      <p class="tile-value" id="kpi-signals">—</p>
+      <p class="tile-note" id="kpi-signals-note">in the selected window</p>
+    </article>
+    <article class="tile">
+      <p class="tile-label">Wallets watched</p>
+      <p class="tile-value" id="kpi-wallets">—</p>
+      <p class="tile-note" id="kpi-wallets-note">across 0 chains</p>
+    </article>
+    <article class="tile">
+      <p class="tile-label">Mints recorded</p>
+      <p class="tile-value" id="kpi-mints">—</p>
+      <p class="tile-note" id="kpi-mints-note">all time</p>
+    </article>
+    <article class="tile">
+      <p class="tile-label">Last scan</p>
+      <p class="tile-value tile-value-sm" id="kpi-scan">never</p>
+      <p class="tile-note" id="kpi-scan-note">run a scan to start</p>
+    </article>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab is-active" role="tab" data-tab="signals">Signals</button>
+    <button class="tab" role="tab" data-tab="activity">Activity</button>
+    <button class="tab" role="tab" data-tab="watchlist">Watchlist</button>
+    <button class="tab" role="tab" data-tab="setup">Setup</button>
+  </nav>
+
+  <!-- ------------------------------------------------------------ signals -->
+  <main>
+  <section class="panel is-active" id="panel-signals" role="tabpanel">
+    <div class="filters">
+      <label>Look back
+        <select id="f-hours">
+          <option value="6">6 hours</option>
+          <option value="24">24 hours</option>
+          <option value="48" selected>48 hours</option>
+          <option value="168">7 days</option>
+        </select>
+      </label>
+      <label>Min wallets
+        <input type="number" id="f-min-wallets" min="1" max="20" step="1">
+      </label>
+      <label>Cluster window
+        <select id="f-window">
+          <option value="30">30 min</option>
+          <option value="60">1 hour</option>
+          <option value="180">3 hours</option>
+          <option value="720">12 hours</option>
+        </select>
+      </label>
+      <label>Chain
+        <select id="f-chain"><option value="">All chains</option></select>
+      </label>
+    </div>
+    <div id="signal-list" class="signal-list"></div>
+  </section>
+
+  <!-- ----------------------------------------------------------- activity -->
+  <section class="panel" id="panel-activity" role="tabpanel">
+    <figure class="chart-card">
+      <figcaption>
+        <h2>Mint activity</h2>
+        <p class="muted">Mints by tracked wallets, per hour, last 48 hours.</p>
+      </figcaption>
+      <div id="activity-chart" class="chart"></div>
+    </figure>
+    <div class="table-wrap">
+      <table class="data-table" id="mint-table">
+        <thead>
+          <tr><th>When</th><th>Chain</th><th>Wallet</th><th>Collection</th><th>Kind</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- watchlist -->
+  <section class="panel" id="panel-watchlist" role="tabpanel">
+    <div class="card">
+      <h2>Add wallets</h2>
+      <p class="muted">Paste a column copied out of Notion. Explorer links, ranks and dollar
+        amounts on the same line are read automatically.</p>
+      <textarea id="paste-box" rows="5" spellcheck="false"
+        placeholder="1&#9;0xabc…&#9;https://abscan.org/address/0xabc…&#9;$125,000"></textarea>
+      <div class="form-row">
+        <label>Chain
+          <select id="add-chain"><option value="">Infer per row</option></select>
+        </label>
+        <label>Tag
+          <input type="text" id="add-tag" placeholder="e.g. Project Mars Land">
+        </label>
+        <button class="btn btn-primary" id="add-btn">Add wallets</button>
+      </div>
+      <p class="form-note" id="add-note" hidden></p>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table" id="wallet-table">
+        <thead>
+          <tr><th>Chain</th><th>Address</th><th>Rank</th><th>PnL</th><th>Tag</th><th>Source</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------------- setup -->
+  <section class="panel" id="panel-setup" role="tabpanel">
+    <div class="card">
+      <h2>Credentials</h2>
+      <p class="muted">Set these in the environment before starting the server. Restart to pick up changes.</p>
+      <ul class="status-list" id="cred-list"></ul>
+    </div>
+    <div class="card">
+      <h2>Notion import</h2>
+      <p class="muted">Each database has to be shared with your integration before its rows are readable.</p>
+      <ul class="source-list" id="source-list"></ul>
+      <button class="btn" id="sync-btn">Import from Notion</button>
+      <p class="form-note" id="sync-note" hidden></p>
+    </div>
+    <div class="card">
+      <h2>Chain coverage</h2>
+      <table class="data-table" id="coverage-table">
+        <thead><tr><th>Chain</th><th>Wallets</th><th>Provider</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  </main>
+
+  <div class="tooltip" id="tooltip" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>
