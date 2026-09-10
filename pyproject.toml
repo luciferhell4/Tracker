@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wallet-monitor"
+version = "1.0.0"
+description = "Watch smart-money wallets and surface the mints they cluster into early"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+wallet-monitor = "wallet_monitor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,60 @@
+# Wallet monitor configuration.
+# Secrets never live here - they come from the environment (see .env.example).
+
+[store]
+path        = "data/tracker.sqlite"
+wallets_csv = "data/wallets.csv"
+
+# --------------------------------------------------------------------------
+# Where the watched wallets come from. These are the five Notion tables the
+# watchlist is built from. `chain_hint` is only consulted when a row has no
+# explorer or gmgn link to infer the chain from.
+# --------------------------------------------------------------------------
+[[notion.databases]]
+name = "Project Mars Land - Top 60 Wallets"
+url  = "https://uttermost-pumpkin-971.notion.site/52c36ac9a1074b8897f7e413caa0597d?v=23118e91dbb54d6f890090ac21fe5c42"
+
+[[notion.databases]]
+name = "Scrape Wallet NFTs Multichain"
+url  = "https://uttermost-pumpkin-971.notion.site/9a9f8e3b939c4005a90b86e065838b2b?v=3cf2390761ca81fb9e99000c2db58f17"
+
+[[notion.databases]]
+name = "Scrape Wallet NFTs"
+url  = "https://uttermost-pumpkin-971.notion.site/b8ca8c3741d74d709e6c8e17c254818d?v=3c02390761ca816cb594000c92f2f6c"
+
+[[notion.databases]]
+name = "Arc Smart Money Wallets"
+url  = "https://uttermost-pumpkin-971.notion.site/d0afecae9b1445fc8f73f1b44b43b75c?v=cd6f8615c95f4d9881688c70c0d23053"
+
+[[notion.databases]]
+name = "Scrap wallet stable"
+url  = "https://uttermost-pumpkin-971.notion.site/80f2d75809244415bae1ff4b48d78cf1?v=5fa6abd7ba704cd6b67714325200408a"
+
+# --------------------------------------------------------------------------
+# Scanning
+# --------------------------------------------------------------------------
+[scan]
+lookback_hours        = 24    # how far back a pass looks for mints
+chains                = []    # empty = every chain the watchlist covers
+max_wallets_per_chain = 0     # 0 = no cap; lower it while testing rate limits
+request_timeout       = 30
+max_retries           = 3
+interval_seconds      = 300   # `watch` loop period
+
+# --------------------------------------------------------------------------
+# What counts as a signal. Loosen min_wallets to see more, raise it for less noise.
+# --------------------------------------------------------------------------
+[signal]
+min_wallets            = 2     # distinct tracked wallets in the same contract
+window_minutes         = 180   # ...that minted within this window
+min_score              = 0.0
+max_contract_age_hours = 72.0  # ignore contracts first seen longer ago than this
+top_n                  = 25
+
+# --------------------------------------------------------------------------
+# Optional alert sinks. Prefer the environment variables in .env.example.
+# --------------------------------------------------------------------------
+[notify]
+discord_webhook   = ""
+telegram_bot_token = ""
+telegram_chat_id   = ""
