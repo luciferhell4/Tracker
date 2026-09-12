@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from . import chains, notify, notion_sync, paste
+from . import __version__, chains, notify, notion_sync, paste
 from .config import Config
 from .models import Signal, Wallet
 from .providers.registry import build_providers, provider_for
@@ -95,6 +95,21 @@ class MonitorService:
 
     def _store(self) -> Store:
         return Store(self.cfg.store_path)
+
+    # ----------------------------------------------------------------- health
+
+    def health(self) -> tuple[dict[str, Any], int]:
+        """Liveness plus a real read of the database, for uptime checks.
+
+        Returns 503 rather than 200 when the store cannot be opened, so a
+        proxy or monitor sees a broken instance instead of an empty one.
+        """
+        try:
+            with self._store() as store:
+                stats = store.stats()
+            return ({"status": "ok", "version": __version__, **stats}, 200)
+        except Exception as exc:
+            return ({"status": "error", "version": __version__, "error": str(exc)}, 503)
 
     # ------------------------------------------------------------------ state
 
@@ -346,6 +361,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._serve_asset("index.html")
             elif route in ("/app.js", "/styles.css"):
                 self._serve_asset(route.lstrip("/"))
+            elif route == "/api/health":
+                self._send_json(*self.service.health())
             elif route == "/api/state":
                 self._send_json(self.service.state())
             elif route == "/api/wallets":

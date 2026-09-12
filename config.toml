@@ -5,6 +5,13 @@
 path        = "data/tracker.sqlite"
 wallets_csv = "data/wallets.csv"
 
+# The dashboard's bind address. Loopback on purpose: the app has no auth of its
+# own, so in production a reverse proxy terminates TLS and authentication in
+# front of it. Override per environment with TRACKER_HOST / TRACKER_PORT.
+[server]
+host = "127.0.0.1"
+port = 8787
+
 # --------------------------------------------------------------------------
 # Where the watched wallets come from. These are the five Notion tables the
 # watchlist is built from. `chain_hint` is only consulted when a row has no

@@ -8,11 +8,24 @@ Type=simple
 User=wallet
 Group=wallet
 WorkingDirectory=/opt/wallet-monitor
+# Bare KEY=value lines, no `export` — systemd does not parse `export`.
 EnvironmentFile=-/etc/wallet-monitor.env
-# Bound to loopback on purpose: nginx terminates TLS and basic auth in front.
-ExecStart=/opt/wallet-monitor/.venv/bin/wallet-monitor serve --host 127.0.0.1 --port 8787
+# Host and port come from [server] in config.toml, overridable per environment
+# with TRACKER_HOST / TRACKER_PORT. Keep the bind on loopback: nginx terminates
+# TLS and basic auth in front of it.
+ExecStart=/opt/wallet-monitor/.venv/bin/wallet-monitor serve
 Restart=always
 RestartSec=5
+
+# Fail the start rather than looping if the build or database is broken.
+ExecStartPost=/bin/sh -c 'for i in $(seq 30); do \
+    /opt/wallet-monitor/.venv/bin/python -c "import urllib.request,os,sys;\
+        h=os.environ.get(\"TRACKER_HOST\",\"127.0.0.1\");\
+        p=os.environ.get(\"TRACKER_PORT\",\"8787\");\
+        urllib.request.urlopen(f\"http://{h}:{p}/api/health\",timeout=2)" \
+        >/dev/null 2>&1 && exit 0; \
+    sleep 1; done; echo "health check never passed"; exit 1'
+TimeoutStartSec=60
 
 # The service only ever needs its own data directory.
 NoNewPrivileges=true

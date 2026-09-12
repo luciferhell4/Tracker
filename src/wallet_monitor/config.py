@@ -55,6 +55,10 @@ class ScanSettings:
 @dataclass
 class Config:
     store_path: str = "data/tracker.sqlite"
+    # Bound to loopback by default: in production a reverse proxy terminates
+    # TLS and authentication in front of it.
+    host: str = "127.0.0.1"
+    port: int = 8787
     wallets_csv: str = "data/wallets.csv"
     notion_sources: list[NotionSource] = field(default_factory=list)
     notion_site: str = ""
@@ -94,6 +98,10 @@ class Config:
         store = raw.get("store", {})
         cfg.store_path = store.get("path", cfg.store_path)
         cfg.wallets_csv = store.get("wallets_csv", cfg.wallets_csv)
+
+        server = raw.get("server", {})
+        cfg.host = server.get("host", cfg.host)
+        cfg.port = int(server.get("port", cfg.port))
 
         cfg.notion_sources = [
             NotionSource(
@@ -147,6 +155,10 @@ class Config:
         # Environment overrides for the knobs people tune most often.
         if v := os.environ.get("TRACKER_DB"):
             cfg.store_path = v
+        if v := os.environ.get("TRACKER_HOST"):
+            cfg.host = v
+        if v := os.environ.get("TRACKER_PORT"):
+            cfg.port = int(v)
         if v := os.environ.get("TRACKER_MIN_WALLETS"):
             cfg.signal.min_wallets = int(v)
         if v := os.environ.get("TRACKER_WINDOW_MINUTES"):

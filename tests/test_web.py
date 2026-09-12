@@ -168,3 +168,33 @@ def test_unknown_routes_and_bad_bodies_are_handled(client):
     assert err.value.code == 404
     with pytest.raises(urllib.error.HTTPError):
         client("/../etc/passwd")
+
+
+def test_health_reports_ok_and_reads_the_database(cfg, client):
+    seed(cfg)
+    health = client("/api/health")
+    assert health["status"] == "ok"
+    assert health["wallets"] == 2
+    assert health["mints"] == 2
+    assert health["version"]
+
+
+def test_health_returns_503_when_the_store_is_unusable(cfg, client, tmp_path):
+    # A directory where the sqlite file should be: opening it must fail loudly.
+    broken = tmp_path / "broken.sqlite"
+    broken.mkdir()
+    cfg.store_path = str(broken)
+    with pytest.raises(urllib.error.HTTPError) as err:
+        client("/api/health")
+    assert err.value.code == 503
+    assert "error" in json.loads(err.value.read())["status"]
+
+
+def test_serve_binds_the_configured_host_and_port(cfg):
+    cfg.host = "127.0.0.1"
+    cfg.port = 0
+    httpd = web.serve(cfg, cfg.host, cfg.port)
+    try:
+        assert httpd.server_address[0] == "127.0.0.1"
+    finally:
+        httpd.server_close()

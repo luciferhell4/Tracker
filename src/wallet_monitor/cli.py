@@ -161,9 +161,11 @@ def cmd_top(cfg: Config, args: argparse.Namespace) -> int:
 
 
 def cmd_serve(cfg: Config, args: argparse.Namespace) -> int:
-    """Run the dashboard on localhost."""
-    httpd = web.serve(cfg, args.host, args.port)
-    url = f"http://{args.host}:{args.port}/"
+    """Run the dashboard. Flags win over config, config wins over the default."""
+    host = args.host or cfg.host
+    port = args.port or cfg.port
+    httpd = web.serve(cfg, host, port)
+    url = f"http://{host}:{port}/"
     print(f"Wallet Monitor is at {url}  (Ctrl-C to stop)")
     if args.open:
         import webbrowser
@@ -255,8 +257,8 @@ def build_parser() -> argparse.ArgumentParser:
     top.set_defaults(func=cmd_top)
 
     serve_cmd = sub.add_parser("serve", help="run the dashboard in a browser")
-    serve_cmd.add_argument("--host", default="127.0.0.1")
-    serve_cmd.add_argument("--port", type=int, default=8787)
+    serve_cmd.add_argument("--host", help="overrides [server].host / TRACKER_HOST")
+    serve_cmd.add_argument("--port", type=int, help="overrides [server].port / TRACKER_PORT")
     serve_cmd.add_argument("--open", action="store_true", help="open a browser window")
     serve_cmd.set_defaults(func=cmd_serve)
 

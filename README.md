@@ -104,6 +104,61 @@ It binds to localhost only. That is deliberate, since it runs with your API keys
 in its environment. A hosted page could not do this job at all: browsers cannot
 reach Alchemy, Etherscan or Helius from a page you did not serve yourself.
 
+## Production deployment
+
+Three artifacts, each usable on its own or together by `deploy/install.sh`.
+
+**Build command.** Idempotent, safe to re-run on every deploy:
+
+```bash
+./deploy/build.sh                       # builds ./.venv
+APP_DIR=/opt/wallet-monitor ./deploy/build.sh
+```
+
+It pins the Python floor at 3.11 (the config loader uses `tomllib`), creates the
+virtualenv, installs the package, then verifies the result: the console script
+runs and the dashboard's assets are present in the installed package. A build
+that ships without those assets starts cleanly and then serves a blank page, so
+it is checked before any process manager is pointed at it. There are no
+third-party runtime dependencies, so nothing is fetched beyond the package
+itself.
+
+**Environment variables.** The full list, with defaults and effects, is
+`deploy/environment.md`; `.env.example` mirrors it. Nothing is required — the
+chains the watchlist actually lives on need no credentials. Secrets are read
+from the environment only, never written to `config.toml` or the database.
+
+One format trap worth repeating: `EnvironmentFile=` takes bare `KEY=value` lines.
+systemd does not parse `export`, and would create a variable literally named
+`export ALCHEMY_API_KEY`. Both the example file and the one the installer writes
+are already in the right format.
+
+**Startup configuration.** `deploy/` carries the units:
+
+| File | Role |
+|---|---|
+| `wallet-monitor.service` | the dashboard, restarted on failure |
+| `wallet-monitor-scan.service` | one scan pass |
+| `wallet-monitor-scan.timer` | runs that pass every three minutes |
+| `nginx.conf` | TLS termination and basic auth in front |
+
+Start command: `wallet-monitor serve`. Host and port come from `[server]` in
+`config.toml`, overridable with `TRACKER_HOST` and `TRACKER_PORT`, so the unit
+carries no hardcoded address. The service binds loopback and waits on a health
+check before systemd calls the start successful, so a broken build or an
+unreadable database fails the unit instead of flapping in a restart loop.
+
+**Health check.** `GET /api/health` returns 200 with the version and row counts,
+or 503 when the database cannot be opened. Point an uptime monitor at it:
+
+```bash
+curl -fsS http://127.0.0.1:8787/api/health
+```
+
+**Before going live:** keep the bind on loopback, put authentication in front
+(the installer generates a basic-auth password), get a certificate with
+`certbot --nginx`, and back up `data/tracker.sqlite` — it is the entire state.
+
 ## Deploying on a Hostinger VPS
 
 One command on a fresh Ubuntu or Debian VPS:
