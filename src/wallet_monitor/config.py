@@ -16,6 +16,16 @@ DEFAULT_CONFIG_PATH = "config.toml"
 
 
 @dataclass
+class PublicNotionTable:
+    """One table on a published Notion site, readable without a token."""
+
+    name: str
+    collection: str
+    view: str
+    chain_hint: str = ""
+
+
+@dataclass
 class NotionSource:
     name: str
     url: str
@@ -47,6 +57,9 @@ class Config:
     store_path: str = "data/tracker.sqlite"
     wallets_csv: str = "data/wallets.csv"
     notion_sources: list[NotionSource] = field(default_factory=list)
+    notion_site: str = ""
+    notion_space_id: str = ""
+    notion_tables: list[PublicNotionTable] = field(default_factory=list)
     scan: ScanSettings = field(default_factory=ScanSettings)
     signal: SignalRules = field(default_factory=SignalRules)
     discord_webhook: str = ""
@@ -91,6 +104,20 @@ class Config:
             )
             for s in raw.get("notion", {}).get("databases", [])
             if s.get("url")
+        ]
+
+        public = raw.get("notion", {}).get("public", {})
+        cfg.notion_site = public.get("site", "")
+        cfg.notion_space_id = public.get("space_id", "")
+        cfg.notion_tables = [
+            PublicNotionTable(
+                name=t.get("name", t.get("collection", "")),
+                collection=t.get("collection", ""),
+                view=t.get("view", ""),
+                chain_hint=t.get("chain_hint", ""),
+            )
+            for t in public.get("tables", [])
+            if t.get("collection") and t.get("view")
         ]
 
         scan = raw.get("scan", {})

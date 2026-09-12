@@ -1,0 +1,25 @@
+[Unit]
+Description=Wallet Monitor dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wallet
+Group=wallet
+WorkingDirectory=/opt/wallet-monitor
+EnvironmentFile=-/etc/wallet-monitor.env
+# Bound to loopback on purpose: nginx terminates TLS and basic auth in front.
+ExecStart=/opt/wallet-monitor/.venv/bin/wallet-monitor serve --host 127.0.0.1 --port 8787
+Restart=always
+RestartSec=5
+
+# The service only ever needs its own data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/wallet-monitor/data
+
+[Install]
+WantedBy=multi-user.target

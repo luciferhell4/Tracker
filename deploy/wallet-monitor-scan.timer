@@ -1,0 +1,13 @@
+[Unit]
+Description=Scan watched wallets every few minutes
+
+[Timer]
+# Robinhood Chain advances ~3000 blocks (about five minutes) per sweep, so
+# scanning must run at least this often or the cursor falls permanently behind.
+OnBootSec=2min
+OnUnitActiveSec=3min
+AccuracySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

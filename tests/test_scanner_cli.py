@@ -110,12 +110,12 @@ def test_scan_drops_mints_older_than_the_lookback(tmp_path, monkeypatch):
         assert scanner.scan(cfg, store).new_events == []
 
 
-def test_no_credentials_is_reported_not_raised(tmp_path, monkeypatch):
+def test_no_providers_is_reported_not_raised(tmp_path, monkeypatch):
     cfg = make_config(tmp_path)
     monkeypatch.setattr(scanner, "build_providers", lambda _cfg: [])
     with Store(cfg.store_path) as store:
         result = scanner.scan(cfg, store)
-        assert result.errors and "provider credentials" in result.errors[0]
+        assert result.errors and "No chain provider is available" in result.errors[0]
 
 
 def test_scan_command_end_to_end(tmp_path, monkeypatch, capsys):

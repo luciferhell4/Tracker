@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import chains, notify, notion_sync, paste, report, web
+from . import chains, notify, notion_public, notion_sync, paste, report, web
 from .config import Config
 from .providers.registry import build_providers, missing_credentials, provider_for
 from .scanner import scan, wallet_index
@@ -22,7 +22,12 @@ def _store(cfg: Config) -> Store:
 # ------------------------------------------------------------------ commands
 
 def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
-    wallets, notes = notion_sync.sync(cfg)
+    # The published site needs no credentials, so it is tried first; the
+    # integration API is only needed for tables that are not published.
+    if cfg.notion_tables and not args.use_token:
+        wallets, notes = notion_public.sync(cfg)
+    else:
+        wallets, notes = notion_sync.sync(cfg)
     for note in notes:
         print(f"  {note}")
     if not wallets:
@@ -177,8 +182,8 @@ def cmd_serve(cfg: Config, args: argparse.Namespace) -> int:
 def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     print(f"config store       : {cfg.store_path}")
     print(f"wallet csv         : {cfg.wallets_csv}")
-    print(f"notion databases   : {len(cfg.notion_sources)} configured")
-    print(f"NOTION_TOKEN       : {'set' if cfg.notion_token else 'MISSING'}")
+    print(f"notion tables      : {len(cfg.notion_tables)} public, {len(cfg.notion_sources)} via token")
+    print(f"NOTION_TOKEN       : {'set' if cfg.notion_token else 'not needed for public tables'}")
     print(f"ALCHEMY_API_KEY    : {'set' if cfg.alchemy_key else 'missing'}")
     print(f"ETHERSCAN_API_KEY  : {'set' if cfg.etherscan_key else 'missing'}")
     print(f"HELIUS_API_KEY     : {'set' if cfg.helius_key else 'missing'}")
@@ -210,7 +215,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-c", "--config", help="path to config.toml")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sync = sub.add_parser("sync", help="import wallets from the configured Notion databases")
+    sync = sub.add_parser("sync", help="import wallets from the configured Notion tables")
+    sync.add_argument(
+        "--use-token",
+        action="store_true",
+        help="use the Notion integration API instead of the published site",
+    )
     sync.set_defaults(func=cmd_sync)
 
     imp = sub.add_parser("import-csv", help="import wallets from a CSV file")

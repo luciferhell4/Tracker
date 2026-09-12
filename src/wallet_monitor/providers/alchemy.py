@@ -17,6 +17,7 @@ from .base import ProviderUnavailable, hex_to_int, iso_to_unix
 
 CATEGORIES = ["erc721", "erc1155"]
 PAGE_SIZE = 100
+MAX_TIMESTAMP_LOOKUPS = 40
 
 
 class AlchemyProvider:
@@ -25,6 +26,7 @@ class AlchemyProvider:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self.key = cfg.alchemy_key
+        self._floor_cache: dict[tuple[str, int], int] = {}
 
     def supports(self, chain: str) -> bool:
         c = chains.CHAINS.get(chain)
@@ -39,6 +41,45 @@ class AlchemyProvider:
     def latest_block(self, chain: str) -> int:
         data = self._rpc(chain, "eth_blockNumber", [])
         return hex_to_int(data)
+
+    def lookback_floor_block(self, chain: str, hours: int) -> int:
+        """The block roughly `hours` ago, from the chain's measured block time.
+
+        Alchemy does not honour withMetadata on every network — Ink returns no
+        metadata at all — so the window has to be bounded by BLOCK rather than
+        filtered on a timestamp afterwards. Without this, the query returns a
+        wallet's entire mint history.
+        """
+        cached = self._floor_cache.get((chain, hours))
+        if cached is not None:
+            return cached
+
+        head = self.latest_block(chain)
+        span = min(5000, head)
+        recent = self._rpc(chain, "eth_getBlockByNumber", [hex(head), False]) or {}
+        older = self._rpc(chain, "eth_getBlockByNumber", [hex(head - span), False]) or {}
+        elapsed = hex_to_int(recent.get("timestamp")) - hex_to_int(older.get("timestamp"))
+        seconds_per_block = (elapsed / span) if elapsed > 0 and span > 0 else 12.0
+
+        floor = max(0, head - int(hours * 3600 / seconds_per_block) - 1)
+        self._floor_cache[(chain, hours)] = floor
+        return floor
+
+    def resolve_missing_timestamps(self, chain: str, events: list[MintEvent]) -> None:
+        """Look up block times for mints whose response carried none."""
+        missing = list({e.block_number for e in events if not e.timestamp})
+        if not missing:
+            return
+        by_block: dict[int, int] = {}
+        for block_number in missing[:MAX_TIMESTAMP_LOOKUPS]:
+            try:
+                block = self._rpc(chain, "eth_getBlockByNumber", [hex(block_number), False]) or {}
+                by_block[block_number] = hex_to_int(block.get("timestamp"))
+            except Exception:
+                continue  # left at zero; the caller drops what it cannot place
+        for event in events:
+            if not event.timestamp:
+                event.timestamp = by_block.get(event.block_number, 0)
 
     def _rpc(self, chain: str, method: str, params: list[Any]) -> Any:
         data = request_json(
@@ -58,11 +99,13 @@ class AlchemyProvider:
         if not self.supports(chain):
             raise ProviderUnavailable(f"alchemy cannot serve {chain}")
 
+        from_block = since_block or self.lookback_floor_block(chain, lookback_hours)
+
         events: list[MintEvent] = []
         page_key: str | None = None
         while True:
             params: dict[str, Any] = {
-                "fromBlock": hex(since_block) if since_block else "0x0",
+                "fromBlock": hex(max(0, from_block)),
                 "toBlock": "latest",
                 "fromAddress": chains.ZERO_ADDRESS,
                 "toAddress": wallet,
@@ -82,6 +125,10 @@ class AlchemyProvider:
             page_key = result.get("pageKey")
             if not page_key or len(events) >= PAGE_SIZE * 5:
                 break
+
+        # Fill in any timestamp the response omitted. A mint with an unknown
+        # time is useless to the scorer, so it is never guessed.
+        self.resolve_missing_timestamps(chain, events)
         return events
 
     @staticmethod

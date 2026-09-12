@@ -29,30 +29,39 @@ Without installing, run it as `PYTHONPATH=src python3 -m wallet_monitor <command
 
 ### Keys
 
-| Variable | Needed for | Where |
+**Nothing is required.** Robinhood Chain, HyperEVM and Ink are read over their
+own public JSON-RPC, and the watchlist is imported from a published Notion site,
+so a fresh install scans without a single credential. Keys only widen coverage:
+
+| Variable | Adds | Where |
 |---|---|---|
-| `NOTION_TOKEN` | importing the watchlist | notion.so/my-integrations |
-| `ALCHEMY_API_KEY` | EVM mints (preferred, one key covers every network) | alchemy.com |
-| `ETHERSCAN_API_KEY` | EVM fallback and HyperEVM | etherscan.io/apis |
+| `ALCHEMY_API_KEY` | Ethereum, Base, Arbitrum, OP, Polygon, Abstract, Shape, Zora, Berachain, ApeChain, Blast | alchemy.com |
 | `HELIUS_API_KEY` | Solana mints and first buys | helius.dev |
+| `ETHERSCAN_API_KEY` | a fallback on chains Etherscan V2 indexes | etherscan.io/apis |
+| `NOTION_TOKEN` | only for Notion tables that are *not* published | notion.so/my-integrations |
 
 `wallet-monitor doctor` prints what is set, what is missing, and which provider
 each chain in your watchlist will use.
 
 ## Loading the wallets
 
-The five Notion databases are already listed in `config.toml`. They live in a
-workspace that is not yours, so the Notion API will only return their rows to a
-token that can see them:
+The five tables are already listed in `config.toml`, and they are published as a
+Notion Site. A published site answers the same endpoint the Notion web app uses,
+so no token, no sharing step and no workspace membership are involved:
 
 ```bash
-export NOTION_TOKEN=ntn_...
 wallet-monitor sync
 ```
 
-Each database has to be shared with your integration first (open it in Notion →
-`...` → Connections → add your integration). If a table is not shared, `sync`
-reports that one as failed and still imports the rest.
+That pulls 815 wallets with their ranks, PnL and tags, and works out each
+wallet's chain from its explorer link. One table carries no explorer column; its
+addresses show heavy transaction counts on Robinhood Chain and next to none
+anywhere else, so `config.toml` pins it there.
+
+If you point the tool at Notion tables that are *not* published, use
+`wallet-monitor sync --use-token` with `NOTION_TOKEN` set and each database
+shared with your integration. If a table fails either way, `sync` reports that
+one and still imports the rest.
 
 ### Without an integration
 
@@ -94,6 +103,56 @@ the button in the header, and the page refreshes itself every 30 seconds.
 It binds to localhost only. That is deliberate, since it runs with your API keys
 in its environment. A hosted page could not do this job at all: browsers cannot
 reach Alchemy, Etherscan or Helius from a page you did not serve yourself.
+
+## Deploying on a Hostinger VPS
+
+One command on a fresh Ubuntu or Debian VPS:
+
+```bash
+git clone -b claude/wallet-monitor-early-mints-nmi5z3 https://github.com/luciferhell4/Tracker.git
+sudo ./Tracker/deploy/install.sh monitor.example.com
+```
+
+It installs the app under `/opt/wallet-monitor`, creates an unprivileged
+`wallet` user, imports the watchlist from Notion, and starts two systemd units:
+
+- **`wallet-monitor.service`** serves the dashboard on `127.0.0.1:8787`.
+- **`wallet-monitor-scan.timer`** runs a scan every three minutes. This is the
+  part that makes it a monitor: Robinhood Chain moves about 3,000 blocks
+  (roughly five minutes) per sweep, so a scan that only runs when you click a
+  button falls permanently behind.
+
+nginx proxies the dashboard and the installer prints a generated password for
+it. **The dashboard is never exposed unauthenticated** — it can add and remove
+wallets and spend your API credits — so basic auth is set up before the port is
+opened. Point the domain at the VPS in Hostinger's DNS panel with an A record,
+then get a certificate:
+
+```bash
+certbot --nginx -d monitor.example.com
+```
+
+Leave the domain off (`sudo ./deploy/install.sh`) and nothing is exposed: the
+app stays on loopback and you reach it over an SSH tunnel.
+
+Shared hosting will not work for this. It needs a long-lived process, so it has
+to be a VPS.
+
+Day to day:
+
+```bash
+journalctl -u wallet-monitor -f              # dashboard logs
+journalctl -u wallet-monitor-scan -f         # what each scan found
+systemctl start wallet-monitor-scan.service  # scan right now
+systemctl list-timers wallet-monitor-scan    # when the next pass runs
+```
+
+To update: `git -C /opt/wallet-monitor pull && systemctl restart wallet-monitor`.
+
+Secrets live in `/etc/wallet-monitor.env`, outside the repo and readable only by
+root and the service. Add keys there and restart. The database is a single
+SQLite file at `/opt/wallet-monitor/data/tracker.sqlite`; back that up and you
+have backed up everything.
 
 ## Running from the command line
 
@@ -145,13 +204,37 @@ Tune all of it in `config.toml` under `[signal]`, or per-run with
 
 ## Chains
 
-Ethereum, Base, Arbitrum, OP Mainnet, Polygon, Abstract, Shape, Zora, Ink,
-Berachain, ApeChain, Blast, HyperEVM and Solana. The chain for each wallet comes
-from its explorer or gmgn link in Notion, so a multichain table sorts itself out.
+The watchlist is mostly not on the chains a commercial provider serves:
 
-Add a chain by adding one `Chain(...)` row in `src/wallet_monitor/chains.py`; if
-Alchemy has no network slug for it, leave that field `None` and Etherscan V2
-picks it up through its chain id.
+| Chain | Wallets | Read through |
+|---|--:|---|
+| Robinhood Chain | 584 | public RPC, no key |
+| HyperEVM | 119 | public RPC, no key |
+| Ink | 60 | Alchemy, or public RPC without a key |
+| Arc | 52 | nothing yet |
+
+Ethereum, Base, Arbitrum, OP Mainnet, Polygon, Abstract, Shape, Zora, Berachain,
+ApeChain, Blast and Solana are supported too. Each wallet's chain comes from its
+explorer or gmgn link, so a multichain table sorts itself out.
+
+Arc is the one gap: its mainnet RPC is not published and no provider indexes it,
+so those 52 wallets are imported and labelled but not scannable.
+
+Add a chain with one `Chain(...)` row in `src/wallet_monitor/chains.py`. Give it
+`rpc_urls` and it needs no key at all; set `log_range` to the widest span that
+RPC accepts, and `max_blocks_per_scan` to about five minutes of its blocks.
+
+### Why RPC chains are swept whole
+
+A chain with no provider is read with `eth_getLogs` filtered to transfers *from*
+the zero address, across the whole chain, and matched against the watchlist
+locally. One request covers all 584 Robinhood wallets; asking per wallet would
+be 584 requests a pass.
+
+Robinhood Chain produces a block every 0.1 seconds, so a day is about 850,000
+blocks and a full backfill is impossible. Each pass advances a per-chain cursor
+by roughly five minutes of blocks and catches up over successive passes — which
+is why the scan wants to run continuously rather than by hand.
 
 ## What counts as a mint
 
@@ -171,7 +254,8 @@ src/wallet_monitor/
   config.py       config.toml + environment
   notion_sync.py  Notion import, CSV import/export
   paste.py        address extraction from pasted table rows
-  providers/      alchemy, etherscan, helius, and the picker between them
+  providers/      alchemy, etherscan, helius, public RPC, and the picker
+  notion_public.py  tokenless import from a published Notion site
   scanner.py      one incremental pass over every wallet
   scoring.py      clustering and the score
   store.py        sqlite: wallets, mints, cursors, alert history
@@ -202,3 +286,10 @@ using fixtures rather than live APIs. Nothing in it touches the network.
 - Etherscan's free tier is 5 calls/second and each wallet costs two of them, so
   a large watchlist on the Etherscan path takes a while. Alchemy is one call per
   wallet and much faster.
+- Public RPCs throttle hard. Requests are spaced and retried with backoff, and
+  each chain advances a bounded window per pass. If a chain reports
+  `RPC failed`, the error names every endpoint that refused and why.
+- A mint whose block time cannot be read is **dropped, never stamped with the
+  current time**. Alchemy ignores its own metadata flag on some networks, and
+  guessing would make unrelated mints look simultaneous and manufacture signals
+  out of nothing.

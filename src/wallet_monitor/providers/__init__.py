@@ -4,7 +4,8 @@ from .base import MintProvider, ProviderUnavailable
 from .alchemy import AlchemyProvider
 from .etherscan import EtherscanProvider
 from .helius import HeliusProvider
-from .registry import build_providers, provider_for
+from .rpc import RpcProvider
+from .registry import build_providers, missing_credentials, provider_for, rpc_provider
 
 __all__ = [
     "MintProvider",
@@ -12,6 +13,9 @@ __all__ = [
     "AlchemyProvider",
     "EtherscanProvider",
     "HeliusProvider",
+    "RpcProvider",
     "build_providers",
+    "missing_credentials",
     "provider_for",
+    "rpc_provider",
 ]

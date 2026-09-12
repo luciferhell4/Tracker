@@ -1,3 +1,5 @@
+import pytest
+
 from wallet_monitor import chains
 from wallet_monitor.config import Config
 from wallet_monitor.providers.alchemy import AlchemyProvider
@@ -107,15 +109,41 @@ def test_helius_swap_ignores_sol_and_records_the_bought_token(monkeypatch):
 def test_provider_support_matrix(monkeypatch):
     cfg = cfg_with(monkeypatch, ALCHEMY_API_KEY="a", ETHERSCAN_API_KEY="e", HELIUS_API_KEY="h")
     providers = build_providers(cfg)
-    assert [p.name for p in providers] == ["alchemy", "etherscan", "helius"]
+    assert [p.name for p in providers] == ["alchemy", "rpc", "etherscan", "helius"]
     assert provider_for(providers, "base").name == "alchemy"
     assert provider_for(providers, "solana").name == "helius"
-    # HyperEVM has no Alchemy network, so it falls through to Etherscan V2.
-    assert provider_for(providers, "hyperevm").name == "etherscan"
+    # HyperEVM has no Alchemy network but does have a public RPC, which beats
+    # Etherscan because Etherscan only indexes a fixed list of chain ids.
+    assert provider_for(providers, "hyperevm").name == "rpc"
+    assert provider_for(providers, "robinhood").name == "rpc"
+    # Arc has neither an RPC nor Etherscan coverage, so nothing serves it.
+    assert provider_for(providers, "arc") is None
 
 
-def test_no_keys_means_no_providers(monkeypatch):
+def test_public_rpc_chains_need_no_keys_at_all(monkeypatch):
     cfg = cfg_with(monkeypatch)
-    assert build_providers(cfg) == []
-    assert provider_for([], "base") is None
+    providers = build_providers(cfg)
+    assert [p.name for p in providers] == ["rpc"]
+    # The chains the watchlist actually lives on work with zero credentials.
+    assert provider_for(providers, "robinhood").name == "rpc"
+    assert provider_for(providers, "hyperevm").name == "rpc"
+    # Chains that need a commercial provider still report as uncovered.
+    assert provider_for(providers, "ethereum") is None
+    assert provider_for(providers, "solana") is None
     assert len(missing_credentials(cfg)) == 2
+
+
+def test_etherscan_is_never_asked_about_chains_it_cannot_index(monkeypatch):
+    cfg = cfg_with(monkeypatch, ETHERSCAN_API_KEY="e")
+    provider = EtherscanProvider(cfg)
+    assert provider.supports("ethereum")
+    # Robinhood Chain and Arc carry EVM chain ids Etherscan V2 does not know.
+    assert not provider.supports("robinhood")
+    assert not provider.supports("arc")
+
+
+def test_etherscan_surfaces_a_rejected_key_instead_of_reading_it_as_empty():
+    rejected = {"status": "0", "message": "NOTOK", "result": "Invalid API Key"}
+    with pytest.raises(Exception) as err:
+        EtherscanProvider._parse("ethereum", WALLET, "erc721", rejected)
+    assert "Invalid API Key" in str(err.value)

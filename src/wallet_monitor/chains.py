@@ -20,6 +20,17 @@ class Chain:
     explorer: str              # base URL, no trailing slash
     kind: str = "evm"          # "evm" or "svm"
 
+    # Public JSON-RPC endpoints, for chains no commercial provider serves.
+    rpc_urls: tuple[str, ...] = ()
+    # Widest block span this chain's RPC accepts for eth_getLogs.
+    log_range: int = 2000
+    # Blocks advanced per sweep. Sized in chain TIME, not blocks: Robinhood
+    # produces a block every ~0.1s and HyperEVM every ~1s, so equal block
+    # counts would mean wildly different windows.
+    max_blocks_per_scan: int = 1000
+    # False for chains Etherscan V2 does not index, so it is never asked.
+    etherscan: bool = True
+
     def address_url(self, address: str) -> str:
         if self.kind == "svm":
             return f"{self.explorer}/account/{address}"
@@ -47,11 +58,23 @@ CHAINS: dict[str, Chain] = {
         Chain("abstract", "Abstract", 2741, "abstract-mainnet", "https://abscan.org"),
         Chain("shape", "Shape", 360, "shape-mainnet", "https://shapescan.xyz"),
         Chain("zora", "Zora", 7777777, "zora-mainnet", "https://explorer.zora.energy"),
-        Chain("ink", "Ink", 57073, "ink-mainnet", "https://explorer.inkonchain.com"),
+        Chain("ink", "Ink", 57073, "ink-mainnet", "https://explorer.inkonchain.com",
+              rpc_urls=("https://rpc-gel.inkonchain.com", "https://rpc-qnd.inkonchain.com"),
+              max_blocks_per_scan=600),
         Chain("berachain", "Berachain", 80094, "berachain-mainnet", "https://berascan.com"),
         Chain("apechain", "ApeChain", 33139, "apechain-mainnet", "https://apescan.io"),
         Chain("blast", "Blast", 81457, "blast-mainnet", "https://blastscan.io"),
-        Chain("hyperevm", "HyperEVM", 999, None, "https://hyperevmscan.io"),
+        Chain("hyperevm", "HyperEVM", 999, None, "https://hyperevmscan.io",
+              rpc_urls=("https://rpc.hyperliquid.xyz/evm",),
+              log_range=1000, max_blocks_per_scan=500),
+        # The two chains the Notion watchlists actually live on. Neither is
+        # served by Alchemy or Etherscan V2.
+        Chain("robinhood", "Robinhood Chain", 4663, None,
+              "https://robinhoodchain.blockscout.com",
+              rpc_urls=("https://rpc.mainnet.chain.robinhood.com",
+                        "https://robinhood-rpc.publicnode.com"),
+              log_range=1000, max_blocks_per_scan=3000, etherscan=False),
+        Chain("arc", "Arc", 5042, None, "https://gmgn.ai/arc", etherscan=False),
         Chain("solana", "Solana", None, "solana-mainnet", "https://solscan.io", kind="svm"),
     ]
 }
@@ -80,6 +103,8 @@ _HOST_HINTS: list[tuple[str, str]] = [
     ("hyperevmscan.io", "hyperevm"),
     ("purrsec.com", "hyperevm"),
     ("hypurrscan.io", "hyperevm"),
+    ("robinhoodchain.blockscout.com", "robinhood"),
+    ("gmgn.ai/arc", "arc"),
     ("solscan.io", "solana"),
     ("solana.fm", "solana"),
     ("xray.helius.xyz", "solana"),

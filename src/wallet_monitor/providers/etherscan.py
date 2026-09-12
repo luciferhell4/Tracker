@@ -30,7 +30,7 @@ class EtherscanProvider:
 
     def supports(self, chain: str) -> bool:
         c = chains.CHAINS.get(chain)
-        return bool(self.key and c and c.kind == "evm" and c.chain_id)
+        return bool(self.key and c and c.kind == "evm" and c.chain_id and c.etherscan)
 
     def _throttle(self) -> None:
         # The free tier allows 5 calls/second; stay comfortably under it.
@@ -74,9 +74,15 @@ class EtherscanProvider:
         if not isinstance(data, dict):
             return []
         result = data.get("result")
-        # "No transactions found" comes back as status 0 with a string result.
+        # Etherscan answers 200 even for a rejected key or an unsupported
+        # chain, putting the reason in `result` as a string. An empty wallet
+        # says so in `message`; anything else there is a real failure and must
+        # not pass silently as "no mints".
         if not isinstance(result, list):
-            return []
+            reason = result if isinstance(result, str) else str(data.get("message", ""))
+            if "no transactions found" in reason.lower() or "no records found" in reason.lower():
+                return []
+            raise ProviderUnavailable(f"etherscan: {reason or 'unexpected response'}")
 
         target = wallet.lower()
         out: list[MintEvent] = []

@@ -1,0 +1,20 @@
+[Unit]
+Description=Wallet Monitor scan pass
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=wallet
+Group=wallet
+WorkingDirectory=/opt/wallet-monitor
+EnvironmentFile=-/etc/wallet-monitor.env
+ExecStart=/opt/wallet-monitor/.venv/bin/wallet-monitor scan
+# A pass that overruns its slot is killed rather than piling up behind the next.
+TimeoutStartSec=600
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/wallet-monitor/data

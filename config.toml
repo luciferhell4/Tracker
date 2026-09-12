@@ -30,6 +30,45 @@ url  = "https://uttermost-pumpkin-971.notion.site/d0afecae9b1445fc8f73f1b44b43b7
 name = "Scrap wallet stable"
 url  = "https://uttermost-pumpkin-971.notion.site/80f2d75809244415bae1ff4b48d78cf1?v=5fa6abd7ba704cd6b67714325200408a"
 
+
+# --------------------------------------------------------------------------
+# The same five tables, read from the PUBLISHED Notion site. This path needs
+# no integration token and no sharing step, so `sync` works out of the box.
+# `chain_hint` only applies to rows with no explorer link of their own.
+# --------------------------------------------------------------------------
+[notion.public]
+site     = "https://uttermost-pumpkin-971.notion.site"
+space_id = "fe4aec61-3450-48b3-9cdf-caa3246e08e7"
+
+[[notion.public.tables]]
+name       = "Project Mars Land - Top 60 Wallets"
+collection = "80e75e3b-f6d9-45d7-a422-0415f4af21d6"
+view       = "23118e91-dbb5-4d6f-8900-90ac21fe5c42"
+
+[[notion.public.tables]]
+name       = "Scrape Wallet NFTs Multichain"
+collection = "d92a63bd-098e-45cc-b68d-bfc20b8e83a8"
+view       = "542b4e90-72ad-45ea-8494-62bbf9a217a8"
+
+[[notion.public.tables]]
+name       = "Scrape Wallet NFTs"
+collection = "cef8f780-7041-4676-82ee-0798a8e3614c"
+view       = "08b3fd4b-a146-4177-ad20-2f123c397c6e"
+
+[[notion.public.tables]]
+name       = "Arc Smart Money Wallets"
+collection = "00638040-e4b3-44da-9a55-e93263ef7e51"
+view       = "cd6f8615-c95f-4d98-8168-8c70c0d23053"
+
+[[notion.public.tables]]
+name       = "Scrap wallet stable"
+collection = "aab6d7b2-ce0c-4c66-9534-f2ccd620b293"
+view       = "5fa6abd7-ba70-4cd6-b677-14325200408a"
+# This table carries no explorer column. Its addresses show heavy transaction
+# counts on Robinhood Chain and next to none elsewhere, which is where they
+# are watched.
+chain_hint = "robinhood"
+
 # --------------------------------------------------------------------------
 # Scanning
 # --------------------------------------------------------------------------
