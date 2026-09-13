@@ -2,13 +2,23 @@
 #
 # Install Wallet Monitor on a fresh Hostinger VPS (Ubuntu/Debian).
 #
-#   curl -fsSL https://raw.githubusercontent.com/luciferhell4/Tracker/claude/wallet-monitor-early-mints-nmi5z3/deploy/install.sh | sudo bash -s -- monitor.example.com
+#   sudo ./deploy/install.sh                       loopback only, reach it by SSH tunnel
+#   sudo ./deploy/install.sh --temporary           serve on the VPS IP / hstgr.cloud hostname
+#   sudo ./deploy/install.sh monitor.example.com   serve on your own domain
 #
-# Or clone the repo and run:  sudo ./deploy/install.sh monitor.example.com
+# --temporary is the "no domain yet" option: nginx answers on whatever address
+# the request arrived on, behind basic auth and a self-signed certificate.
 #
 set -euo pipefail
 
-DOMAIN="${1:-}"
+MODE="loopback"
+DOMAIN=""
+case "${1:-}" in
+  "")            MODE="loopback" ;;
+  --temporary|--temp|--ip|--public) MODE="temporary" ;;
+  -*)            echo "Unknown option: $1" >&2; exit 1 ;;
+  *)             MODE="domain"; DOMAIN="$1" ;;
+esac
 REPO="${REPO:-https://github.com/luciferhell4/Tracker.git}"
 BRANCH="${BRANCH:-claude/wallet-monitor-early-mints-nmi5z3}"
 APP_DIR=/opt/wallet-monitor
@@ -77,28 +87,73 @@ systemctl daemon-reload
 systemctl enable --now wallet-monitor.service
 systemctl enable --now wallet-monitor-scan.timer
 
-if [[ -n "$DOMAIN" ]]; then
-  echo "==> Configuring nginx for $DOMAIN"
-  if [[ ! -f "$HTPASSWD" ]]; then
-    PASSWORD="$(head -c 18 /dev/urandom | base64 | tr -d '/+=' | head -c 20)"
-    htpasswd -bc "$HTPASSWD" admin "$PASSWORD" >/dev/null 2>&1
-    chown root:www-data "$HTPASSWD"; chmod 640 "$HTPASSWD"
-    echo
-    echo "    Dashboard login -> user: admin   password: $PASSWORD"
-    echo "    (shown once; change it with: htpasswd $HTPASSWD admin)"
-    echo
+make_password() {
+  if [[ -f "$HTPASSWD" ]]; then
+    return
   fi
-  sed "s/monitor.example.com/$DOMAIN/g" "$APP_DIR/deploy/nginx.conf" \
-    > /etc/nginx/sites-available/wallet-monitor
-  ln -sf /etc/nginx/sites-available/wallet-monitor /etc/nginx/sites-enabled/wallet-monitor
-  rm -f /etc/nginx/sites-enabled/default
-  nginx -t && systemctl reload nginx
-  echo "    Now point $DOMAIN at this VPS in Hostinger's DNS (an A record to this IP),"
-  echo "    then run:  certbot --nginx -d $DOMAIN"
-else
-  echo "==> No domain given, so nginx was left alone."
-  echo "    The dashboard is on 127.0.0.1:8787 only. Re-run with a domain to expose it."
-fi
+  PASSWORD="$(head -c 18 /dev/urandom | base64 | tr -d '/+=' | head -c 20)"
+  htpasswd -bc "$HTPASSWD" admin "$PASSWORD" >/dev/null 2>&1
+  chown root:www-data "$HTPASSWD"; chmod 640 "$HTPASSWD"
+  echo
+  echo "    Dashboard login -> user: admin   password: $PASSWORD"
+  echo "    (shown once; change it with: htpasswd $HTPASSWD admin)"
+  echo
+}
+
+case "$MODE" in
+  domain)
+    echo "==> Configuring nginx for $DOMAIN"
+    make_password
+    sed "s/monitor.example.com/$DOMAIN/g" "$APP_DIR/deploy/nginx.conf" \
+      > /etc/nginx/sites-available/wallet-monitor
+    ln -sf /etc/nginx/sites-available/wallet-monitor /etc/nginx/sites-enabled/wallet-monitor
+    rm -f /etc/nginx/sites-enabled/default
+    nginx -t && systemctl reload nginx
+    echo "    Point $DOMAIN at this VPS in Hostinger's DNS (an A record to this IP),"
+    echo "    then run:  certbot --nginx -d $DOMAIN"
+    ;;
+
+  temporary)
+    echo "==> Configuring nginx on this server's own address"
+    make_password
+
+    # A self-signed certificate so the dashboard password is not sent in the
+    # clear. Certbot cannot issue for a bare IP, so this is the honest option
+    # until a real domain points here.
+    if [[ ! -f /etc/nginx/ssl/wallet-monitor.crt ]]; then
+      mkdir -p /etc/nginx/ssl
+      openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+        -keyout /etc/nginx/ssl/wallet-monitor.key \
+        -out    /etc/nginx/ssl/wallet-monitor.crt \
+        -subj "/CN=$(hostname -f 2>/dev/null || hostname)" >/dev/null 2>&1
+      chmod 600 /etc/nginx/ssl/wallet-monitor.key
+    fi
+
+    install -m 644 "$APP_DIR/deploy/nginx-temporary.conf" \
+      /etc/nginx/sites-available/wallet-monitor
+    ln -sf /etc/nginx/sites-available/wallet-monitor /etc/nginx/sites-enabled/wallet-monitor
+    rm -f /etc/nginx/sites-enabled/default
+    nginx -t && systemctl reload nginx
+
+    PUBLIC_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    HOSTNAME_FQDN="$(hostname -f 2>/dev/null || true)"
+    echo
+    echo "    Open the dashboard at:"
+    [[ -n "$HOSTNAME_FQDN" ]] && echo "      https://$HOSTNAME_FQDN/"
+    [[ -n "$PUBLIC_IP"     ]] && echo "      https://$PUBLIC_IP/"
+    echo
+    echo "    The certificate is self-signed, so the browser warns once. That is"
+    echo "    expected without a domain. When you have one, point it here and run:"
+    echo "      certbot --nginx -d your.domain"
+    ;;
+
+  loopback)
+    echo "==> No address given, so nginx was left alone."
+    echo "    The dashboard is on 127.0.0.1:8787 only. Reach it with an SSH tunnel:"
+    echo "      ssh -L 8787:127.0.0.1:8787 root@<this-server>"
+    echo "    Or re-run with --temporary to serve it on this server's own address."
+    ;;
+esac
 
 echo
 echo "==> Done."

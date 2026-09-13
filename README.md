@@ -161,12 +161,33 @@ curl -fsS http://127.0.0.1:8787/api/health
 
 ## Deploying on a Hostinger VPS
 
+**This needs a VPS, not shared hosting.** Shared plans — the ones that come
+with a `*.hostingersite.com` temporary domain — cannot run it at all: there is
+no persistent process and no systemd, and this is a long-running service with a
+three-minute scan timer, not a folder of files to upload.
+
 One command on a fresh Ubuntu or Debian VPS:
 
 ```bash
 git clone -b claude/wallet-monitor-early-mints-nmi5z3 https://github.com/luciferhell4/Tracker.git
-sudo ./Tracker/deploy/install.sh monitor.example.com
+
+sudo ./Tracker/deploy/install.sh --temporary          # no domain yet
+sudo ./Tracker/deploy/install.sh monitor.example.com  # your own domain
+sudo ./Tracker/deploy/install.sh                      # loopback only
 ```
+
+### No domain yet
+
+`--temporary` is the equivalent of a temporary domain for a VPS. nginx answers
+on whatever address the request arrived on, so the dashboard is reachable at the
+server's IP and at the `srvNNNNNN.hstgr.cloud` hostname Hostinger assigns —
+the installer prints both when it finishes.
+
+It is still behind basic auth, and it gets a self-signed certificate so the
+password is not sent in clear text. Browsers warn once about that certificate,
+which is unavoidable without a domain: certificate authorities do not issue for
+a bare IP. When you do have a domain, point it at the VPS and run
+`certbot --nginx -d your.domain` to replace it.
 
 It installs the app under `/opt/wallet-monitor`, creates an unprivileged
 `wallet` user, imports the watchlist from Notion, and starts two systemd units:
@@ -177,21 +198,29 @@ It installs the app under `/opt/wallet-monitor`, creates an unprivileged
   (roughly five minutes) per sweep, so a scan that only runs when you click a
   button falls permanently behind.
 
-nginx proxies the dashboard and the installer prints a generated password for
-it. **The dashboard is never exposed unauthenticated** — it can add and remove
-wallets and spend your API credits — so basic auth is set up before the port is
-opened. Point the domain at the VPS in Hostinger's DNS panel with an A record,
-then get a certificate:
+### Your own domain
+
+Point the domain at the VPS in Hostinger's DNS panel with an A record to the
+server's IP, then:
 
 ```bash
+sudo ./Tracker/deploy/install.sh monitor.example.com
 certbot --nginx -d monitor.example.com
 ```
 
-Leave the domain off (`sudo ./deploy/install.sh`) and nothing is exposed: the
-app stays on loopback and you reach it over an SSH tunnel.
+### Loopback only
 
-Shared hosting will not work for this. It needs a long-lived process, so it has
-to be a VPS.
+With no argument nothing is exposed. The app stays on `127.0.0.1:8787` and you
+reach it through an SSH tunnel:
+
+```bash
+ssh -L 8787:127.0.0.1:8787 root@<your-vps>
+```
+
+In every mode **the dashboard is never exposed unauthenticated** — it can add
+and remove wallets and spend your API credits — so basic auth is configured
+before any port is opened, and the installer prints the generated password
+once.
 
 Day to day:
 
