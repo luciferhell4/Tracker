@@ -76,8 +76,17 @@ ENV
 fi
 
 echo "==> Importing the watchlist from the published Notion tables"
-sudo -u wallet "$APP_DIR/.venv/bin/wallet-monitor" -c "$APP_DIR/config.toml" sync \
-  || echo "    (import failed; run 'wallet-monitor sync' yourself once the VPS can reach notion.site)"
+# Run from APP_DIR: config.toml points the database at a RELATIVE path, so the
+# working directory decides where it lands. Importing from anywhere else writes
+# the wallets to a database the service never opens, and the dashboard then
+# comes up empty with nothing obviously wrong.
+( cd "$APP_DIR" && sudo -u wallet "$APP_DIR/.venv/bin/wallet-monitor" sync ) \
+  || echo "    (import failed; run it yourself later: cd $APP_DIR && sudo -u wallet .venv/bin/wallet-monitor sync)"
+
+if [[ -f "$APP_DIR/data/tracker.sqlite" ]]; then
+  IMPORTED="$( cd "$APP_DIR" && sudo -u wallet "$APP_DIR/.venv/bin/wallet-monitor" wallets 2>/dev/null | tail -1 )"
+  echo "    ${IMPORTED:-watchlist empty}"
+fi
 
 echo "==> Installing the service and the scan timer"
 install -m 644 "$APP_DIR/deploy/wallet-monitor.service"      /etc/systemd/system/
