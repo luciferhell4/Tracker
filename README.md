@@ -166,15 +166,30 @@ with a `*.hostingersite.com` temporary domain — cannot run it at all: there is
 no persistent process and no systemd, and this is a long-running service with a
 three-minute scan timer, not a folder of files to upload.
 
-One command on a fresh Ubuntu or Debian VPS:
+One command on a fresh Ubuntu VPS. Nothing has to be installed first, not even
+git — the installer brings its own:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/luciferhell4/Tracker/claude/wallet-monitor-early-mints-nmi5z3/deploy/install.sh \
+  | sudo bash -s -- --temporary
+```
+
+Swap the final argument for how you want it reached: `--temporary` for the
+server's own address, `monitor.example.com` for your domain, or nothing at all
+for loopback only.
+
+From a checkout instead, if you already have git:
 
 ```bash
 git clone -b claude/wallet-monitor-early-mints-nmi5z3 https://github.com/luciferhell4/Tracker.git
-
-sudo ./Tracker/deploy/install.sh --temporary          # no domain yet
-sudo ./Tracker/deploy/install.sh monitor.example.com  # your own domain
-sudo ./Tracker/deploy/install.sh                      # loopback only
+sudo ./Tracker/deploy/install.sh --temporary
 ```
+
+**Use the Ubuntu 24.04 template.** Config loading needs `tomllib`, which arrived
+in Python 3.11, and Ubuntu 22.04 still ships 3.10. The installer picks the
+newest interpreter it finds and stops with a clear message if none qualifies,
+rather than building a virtualenv that installs cleanly and then dies on first
+run.
 
 ### No domain yet
 

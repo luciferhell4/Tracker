@@ -2,6 +2,12 @@
 #
 # Install Wallet Monitor on a fresh Hostinger VPS (Ubuntu/Debian).
 #
+# Nothing needs to be installed first — not even git:
+#
+#   curl -fsSL https://raw.githubusercontent.com/luciferhell4/Tracker/claude/wallet-monitor-early-mints-nmi5z3/deploy/install.sh \
+#     | sudo bash -s -- --temporary
+#
+# From a checkout instead:
 #   sudo ./deploy/install.sh                       loopback only, reach it by SSH tunnel
 #   sudo ./deploy/install.sh --temporary           serve on the VPS IP / hstgr.cloud hostname
 #   sudo ./deploy/install.sh monitor.example.com   serve on your own domain
@@ -30,10 +36,55 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+echo "==> Checking this server"
+if ! command -v apt-get >/dev/null 2>&1; then
+  cat >&2 <<'MSG'
+    This installer targets Debian and Ubuntu, and this server has no apt.
+    In hPanel: VPS -> Operating System -> rebuild with Ubuntu 24.04,
+    or install by hand following the README.
+MSG
+  exit 1
+fi
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "    No systemd on this server, so the service and scan timer cannot be installed." >&2
+  echo "    A standard Hostinger VPS template has it; a container-based plan may not." >&2
+  exit 1
+fi
+
 echo "==> Installing packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip git nginx apache2-utils >/dev/null
+apt-get install -y -qq python3 python3-venv python3-pip git nginx apache2-utils openssl >/dev/null
+
+# Config loading uses tomllib, which arrived in Python 3.11. Ubuntu 22.04 still
+# ships 3.10, so the interpreter is chosen rather than assumed: a venv built on
+# 3.10 installs cleanly and then dies on first run with "No module named tomllib".
+PYTHON=""
+for candidate in python3.13 python3.12 python3.11 python3; do
+  command -v "$candidate" >/dev/null 2>&1 || continue
+  if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
+    PYTHON="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$PYTHON" ]]; then
+  apt-get install -y -qq python3.11 python3.11-venv >/dev/null 2>&1 || true
+  command -v python3.11 >/dev/null 2>&1 && PYTHON=python3.11
+fi
+
+if [[ -z "$PYTHON" ]]; then
+  cat >&2 <<MSG
+    Python 3.11 or newer is required; this server has $(python3 -V 2>&1).
+    Ubuntu 22.04 ships 3.10. In hPanel: VPS -> Operating System ->
+    rebuild with Ubuntu 24.04, then run this again.
+MSG
+  exit 1
+fi
+
+# The venv module ships separately per interpreter on Debian.
+"$PYTHON" -m venv --help >/dev/null 2>&1 || apt-get install -y -qq "${PYTHON}-venv" >/dev/null 2>&1 || true
+echo "    using $("$PYTHON" -V)"
 
 echo "==> Creating the service user"
 id -u wallet &>/dev/null || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin wallet
@@ -48,7 +99,7 @@ else
 fi
 
 echo "==> Installing into a virtualenv"
-python3 -m venv "$APP_DIR/.venv"
+"$PYTHON" -m venv "$APP_DIR/.venv"
 "$APP_DIR/.venv/bin/pip" install --quiet --upgrade pip
 "$APP_DIR/.venv/bin/pip" install --quiet -e "$APP_DIR"
 
